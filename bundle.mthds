@@ -1,0 +1,126 @@
+domain      = "tech_api_doc_generator"
+description = "API Documentation Writer: takes source code and API context to produce complete API documentation with endpoints, auth overview, and getting started guide"
+main_pipe   = "generate_api_docs"
+
+# --- Concepts ---
+
+[concept.Parameter]
+description = "An endpoint parameter with location, type, and example value"
+
+[concept.Parameter.structure]
+name = {type = "text", description = "Parameter name", required = true}
+location = {type = "text", description = "Where the parameter is sent", required = true, choices = ["path", "query", "header", "body"]}
+param_type = {type = "text", description = "Data type of the parameter", required = true}
+required = {type = "boolean", description = "Whether the parameter is required", required = true}
+description = {type = "text", description = "What this parameter does", required = true}
+example_value = "Example value for the parameter"
+default_value = "Default value if not provided"
+
+[concept.ErrorResponse]
+description = "A possible error response from an API endpoint"
+
+[concept.ErrorResponse.structure]
+status_code = {type = "integer", description = "HTTP status code", required = true}
+error_code = "Application-specific error code"
+when_occurs = {type = "text", description = "When this error occurs", required = true}
+example_body = "Example error response body"
+
+[concept.Endpoint]
+description = "Full documentation for a single API endpoint"
+
+[concept.Endpoint.structure]
+http_method = {type = "text", description = "HTTP method", required = true, choices = ["GET", "POST", "PUT", "PATCH", "DELETE"]}
+path = {type = "text", description = "URL path", required = true}
+summary = {type = "text", description = "One-line summary", required = true}
+description = {type = "text", description = "Detailed description", required = true}
+parameters = {type = "list", item_type = "concept", item_concept_ref = "tech_api_doc_generator.Parameter", description = "Endpoint parameters"}
+request_body_example = "Example request body as JSON"
+response_example = "Example success response as JSON"
+error_responses = {type = "list", item_type = "concept", item_concept_ref = "tech_api_doc_generator.ErrorResponse", description = "Possible error responses"}
+auth_requirement = {description = "Authentication requirement", choices = ["none", "api_key", "bearer_token", "oauth2", "session"]}
+rate_limit = "Rate limit details"
+tags = {type = "list", item_type = "text", description = "Grouping tags"}
+
+[concept.APIDocumentation]
+description = "Complete API documentation with endpoints, auth overview, and getting started guide"
+
+[concept.APIDocumentation.structure]
+api_name = {type = "text", description = "Name of the API", required = true}
+version = "API version"
+base_url = "Base URL for all endpoints"
+overview = {type = "text", description = "Overview description of the API", required = true}
+auth_overview = "How authentication works for this API"
+endpoints = {type = "list", item_type = "concept", item_concept_ref = "tech_api_doc_generator.Endpoint", description = "All documented endpoints", required = true}
+common_errors = "Common error patterns across all endpoints"
+getting_started = {type = "text", description = "Getting started guide with a working curl example", required = true}
+
+# --- Pipes ---
+
+[pipe.generate_api_docs]
+type = "PipeSequence"
+description = "Main pipeline: extracts endpoints from source code then compiles into complete API documentation"
+inputs = {source_code = "Text", api_context = "Text"}
+output = "APIDocumentation"
+steps = [
+    {pipe = "extract_endpoints", result = "endpoints"},
+    {pipe = "compile_documentation", result = "api_docs"},
+]
+
+[pipe.extract_endpoints]
+type = "PipeLLM"
+description = "Extract every API endpoint from source code with full documentation details"
+inputs = {source_code = "Text", api_context = "Text"}
+output = "Endpoint[]"
+model = "$engineering-structured"
+prompt = """
+You are a senior technical writer extracting API endpoint documentation from source code.
+
+API context:
+@api_context
+
+Source code:
+@source_code
+
+Extract every endpoint. For each one provide:
+- http_method: GET, POST, PUT, PATCH, or DELETE
+- path: The URL path (e.g., /api/v1/users/:id)
+- summary: One-line description
+- description: Detailed explanation of what this endpoint does and when to use it
+- parameters: All parameters with name, location (path/query/header/body), type, required flag, description, and example value
+- request_body_example: Realistic JSON request body example
+- response_example: Realistic JSON success response example
+- error_responses: All possible error responses with status code, when they occur, and example body
+- auth_requirement: none, api_key, bearer_token, oauth2, or session
+- rate_limit: Any rate limiting details
+- tags: Grouping tags for organizing the docs
+
+Write for developers who have never seen this API. Examples must be realistic and working.
+"""
+
+[pipe.compile_documentation]
+type = "PipeLLM"
+description = "Organize endpoints into complete API documentation with auth overview and getting started guide"
+inputs = {endpoints = "Endpoint[]", api_context = "Text"}
+output = "APIDocumentation"
+model = "$engineering-structured"
+prompt = """
+You are a senior technical writer compiling complete API documentation.
+
+API context:
+@api_context
+
+Extracted endpoints:
+@endpoints
+
+Compile the documentation:
+- api_name: Infer from context
+- version: Infer from context or endpoints
+- base_url: Infer from context
+- overview: What this API does, who it is for, and key capabilities
+- auth_overview: How authentication works (which scheme, how to obtain credentials, where to send them)
+- endpoints: Organize by tags, include all endpoint details
+- common_errors: Patterns that apply across endpoints (e.g., 401 for expired tokens, 429 for rate limits)
+- getting_started: Step-by-step guide with a concrete curl example that works. Include obtaining credentials, making the first request, and interpreting the response.
+
+Write for developers who are new to this API. The getting started guide should get them from zero to a working request in under 5 minutes.
+"""

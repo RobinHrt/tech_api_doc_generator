@@ -1,0 +1,10 @@
+[package]
+address = "github.com/RobinHrt/tech_api_doc_generator"
+version = "1.0.0"
+description = "API Documentation Writer: extracts endpoints from source code and compiles complete API docs with getting started guide"
+license = "MIT"
+mthds_version = ">=1.0.0"
+main_pipe = "generate_api_docs"
+
+[exports.tech_api_doc_generator]
+pipes = ["generate_api_docs", "extract_endpoints", "compile_documentation"]
